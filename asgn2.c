@@ -35,6 +35,8 @@
 #define MYDEV_NAME "asgn2"
 #define MYIOC_TYPE 'k'
 
+#define BUFFER_SIZE 256                    /* Size of the circular buffer */
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Calum O'Hare");
 MODULE_DESCRIPTION("COSC440 asgn2");
@@ -68,6 +70,52 @@ int asgn2_major = 0;                      /* major number of module */
 int asgn2_minor = 0;                      /* minor number of module */
 int asgn2_dev_count = 1;                  /* number of devices */
 
+
+typedef struct circular_buffer{
+    char content[BUFFER_SIZE];
+    int head;
+    int tail;
+} circ_buf;
+
+circ_buf cbuf;
+
+/*
+ * Writes to the circular buffer
+ * I choose to overwrite the head
+ * if the buffer was full
+ */
+void write_circ_buf(char *data){
+    int i = 0;
+
+    while(data[i] != '\0'){
+        cbuf.content[cbuf.tail] = data[i];
+        i++;
+        cbuf.tail++;
+        if(cbuf.tail == BUFFER_SIZE){
+            cbuf.tail = 0;
+        }
+        if(cbuf.tail == cbuf.head){
+            cbuf.head++;
+            if(cbuf.head == BUFFER_SIZE){
+                cbuf.head = 0;
+            }
+        }
+    }
+}
+
+#if 0
+char* read_circ_buf(){
+    int i = circ_buf.tail;
+    int j = 0;
+
+    if(i < circ_buf.head){
+        circ_buf.circ[i] = data[j];
+        i++;
+        j++;
+        circ_buf.tail++;
+    }
+}
+#endif /* 0 */
 
 /**
  * This function frees all memory pages held by the module.
