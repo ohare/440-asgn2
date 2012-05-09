@@ -103,19 +103,42 @@ void write_circ_buf(char *data){
     }
 }
 
-#if 0
-char* read_circ_buf(){
-    int i = circ_buf.tail;
-    int j = 0;
+/*
+ * Reads from the circular buffer
+ */
+ /* TODO where should this be reading to? */
+char* read_circ_buf(void){
+    char* read;
+    int size_to_read;
+    int i = 0;
 
-    if(i < circ_buf.head){
-        circ_buf.circ[i] = data[j];
-        i++;
-        j++;
-        circ_buf.tail++;
+    if(cbuf.head < cbuf.tail){
+        size_to_read = cbuf.tail - cbuf.head;
+    } else if(cbuf.head > cbuf.tail){
+        size_to_read = BUFFER_SIZE  - cbuf.head;
+        size_to_read += cbuf.tail;
+    } else {
+        return NULL;
     }
+
+    read = kmalloc(size_to_read * sizeof(char), GFP_KERNEL);
+    if(read == NULL){
+        printk(KERN_WARNING "Error allocating memory to read from circular buffer to");
+        return NULL;
+    }
+
+    while(size_to_read > 0){
+        read[i] = cbuf.content[cbuf.head];
+        i++;
+        cbuf.head++;
+        size_to_read--;
+        if(cbuf.head == BUFFER_SIZE){
+            cbuf.head = 0;
+        }
+    }
+
+    return read;
 }
-#endif /* 0 */
 
 /**
  * This function frees all memory pages held by the module.
