@@ -29,6 +29,7 @@
 #include <linux/proc_fs.h>
 #include <linux/device.h>
 #include <linux/ioport.h>
+#include <linux/interrupt.h>
 
 #define MYDEV_NAME "asgn2"
 #define MYIOC_TYPE 'k'
@@ -354,6 +355,9 @@ struct file_operations asgn2_fops = {
   .release = asgn2_release,
 };
 
+irqreturn_t my_handler(int irq, void *dev_id){
+    return IRQ_HANDLED;
+}
 
 /**
  * Initialise the module and create the master device
@@ -431,6 +435,13 @@ int __init asgn2_init_module(void){
     goto fail_class;
   }
 
+  /* Install interrupt handler */
+  if(request_irq(7,my_handler,0,MYDEV_NAME,&asgn2_device) != 0){
+    printk(KERN_WARNING "%s: request_irq failed\n", MYDEV_NAME);
+    result = -ENOMEM;
+    goto fail_class;
+  }
+
   asgn2_device.class = class_create(THIS_MODULE, MYDEV_NAME);
   if (IS_ERR(asgn2_device.class)) {
     printk(KERN_WARNING "%s: can't create udev class\n", MYDEV_NAME);
@@ -455,6 +466,7 @@ fail_class:
   unregister_chrdev_region(asgn2_device.dev, 1);
   remove_proc_entry(MYDEV_NAME, NULL);
   release_region(0x378,3);
+  free_irq(7,&asgn2_device);
 
   /* cleanup code called when any of the initialization steps fail */
 fail_device:
@@ -488,6 +500,7 @@ void __exit asgn2_exit_module(void){
   cdev_del(asgn2_device.cdev);
   unregister_chrdev_region(asgn2_device.dev, 1);
   release_region(0x378,3);
+  free_irq(7,&asgn2_device);
 
   printk(KERN_WARNING "Good bye from %s\n", MYDEV_NAME);
 }
