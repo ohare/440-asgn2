@@ -1,4 +1,4 @@
-MODULE_NAME = asgn1
+MODULE_NAME = asgn2
 EXTRA_CFLAGS += -Werror
 
 
@@ -10,17 +10,13 @@ PWD     := $(shell pwd)
 
 
 
-all: module mmap_test
+all: module
 
 module:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
-mmap_test:
-	gcc -g -W -Wall mmap_test.c -o mmap_test
-
 clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
-	rm -f mmap_test mmap_test.o
 
 help:
 	$(MAKE) -C $(KDIR) M=$(PWD) help

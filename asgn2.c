@@ -227,6 +227,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
   return size_read;
 }
 
+#if 0
 /**
  * This function writes from the user buffer to the virtual disk of this
  * module
@@ -311,6 +312,7 @@ ssize_t asgn2_write(struct file *filp, const char __user *buf, size_t count,
                                orig_f_pos + size_written);
   return size_written;
 }
+#endif /* 0 */
 
 /**
  * Displays information about current status of the module,
@@ -347,12 +349,8 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 struct file_operations asgn2_fops = {
   .owner = THIS_MODULE,
   .read = asgn2_read,
-  .write = asgn2_write,
-  .unlocked_ioctl = asgn2_ioctl,
   .open = asgn2_open,
-  .mmap = asgn2_mmap,
   .release = asgn2_release,
-  .llseek = asgn2_lseek
 };
 
 
