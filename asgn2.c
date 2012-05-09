@@ -30,6 +30,7 @@
 #include <linux/device.h>
 #include <linux/ioport.h>
 #include <linux/interrupt.h>
+#include <asm/io.h>
 
 #define MYDEV_NAME "asgn2"
 #define MYIOC_TYPE 'k'
@@ -441,6 +442,9 @@ int __init asgn2_init_module(void){
     result = -ENOMEM;
     goto fail_class;
   }
+
+  /* Enable the interrupt of the parallel port */
+  outb_p(inb_p(0x378 + 2) | 0x10, 0x378 + 2);
 
   asgn2_device.class = class_create(THIS_MODULE, MYDEV_NAME);
   if (IS_ERR(asgn2_device.class)) {
