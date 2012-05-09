@@ -1,6 +1,6 @@
 /**
  * File: asgn2.c
- * Date: 27/04/2012
+ * Date: 15/05/2012
  * Author: Calum O'Hare
  * Version: 0.1
  *
@@ -28,6 +28,7 @@
 #include <linux/mm.h>
 #include <linux/proc_fs.h>
 #include <linux/device.h>
+#include <linux/ioport.h>
 
 #define MYDEV_NAME "asgn2"
 #define MYIOC_TYPE 'k'
@@ -423,6 +424,13 @@ int __init asgn2_init_module(void){
     goto fail_class;
   }
 
+  /* Get access to parallel port */
+  if(request_region(0x378,3,MYDEV_NAME)){
+    printk(KERN_WARNING "%s: request_region failed\n", MYDEV_NAME);
+    result = -EBUSY;
+    goto fail_class;
+  }
+
   asgn2_device.class = class_create(THIS_MODULE, MYDEV_NAME);
   if (IS_ERR(asgn2_device.class)) {
     printk(KERN_WARNING "%s: can't create udev class\n", MYDEV_NAME);
@@ -446,6 +454,7 @@ fail_class:
   cdev_del(asgn2_device.cdev);
   unregister_chrdev_region(asgn2_device.dev, 1);
   remove_proc_entry(MYDEV_NAME, NULL);
+  release_region(0x378,3);
 
   /* cleanup code called when any of the initialization steps fail */
 fail_device:
@@ -478,6 +487,7 @@ void __exit asgn2_exit_module(void){
   free_memory_pages();
   cdev_del(asgn2_device.cdev);
   unregister_chrdev_region(asgn2_device.dev, 1);
+  release_region(0x378,3);
 
   printk(KERN_WARNING "Good bye from %s\n", MYDEV_NAME);
 }
