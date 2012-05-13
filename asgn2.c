@@ -428,6 +428,7 @@ struct file_operations asgn2_fops = {
 };
 
 irqreturn_t my_handler(int irq, void *dev_id){
+    printk(KERN_INFO "(ASGN2) IRQ %d", irq);
     return IRQ_HANDLED;
 }
 
@@ -504,14 +505,14 @@ int __init asgn2_init_module(void){
   if(request_region(0x378,3,MYDEV_NAME)){
     printk(KERN_WARNING "%s: request_region failed\n", MYDEV_NAME);
     result = -EBUSY;
-    goto fail_class;
+    goto fail_req_region;
   }
 
   /* Install interrupt handler */
   if(request_irq(7,my_handler,0,MYDEV_NAME,&asgn2_device) != 0){
     printk(KERN_WARNING "%s: request_irq failed\n", MYDEV_NAME);
-    result = -ENOMEM;
-    goto fail_class;
+    result = -1;
+    goto fail_req_irq;
   }
 
   /* Enable the interrupt of the parallel port */
@@ -536,12 +537,22 @@ int __init asgn2_init_module(void){
   printk(KERN_WARNING "Hello world from %s\n", MYDEV_NAME);
   return 0;
 
+fail_req_irq:
+  free_irq(7,&asgn2_device);
+  goto fail_req_region;
+    
+
+fail_req_region:
+  release_region(0x378,3);
+  goto fail_class;
+
+
 fail_class:
   cdev_del(asgn2_device.cdev);
   unregister_chrdev_region(asgn2_device.dev, 1);
   remove_proc_entry(MYDEV_NAME, NULL);
-  release_region(0x378,3);
-  free_irq(7,&asgn2_device);
+
+  return result;
 
   /* cleanup code called when any of the initialization steps fail */
 fail_device:
@@ -549,7 +560,6 @@ fail_device:
 
   /* COMPLETE ME */
   /* PLEASE PUT YOUR CLEANUP CODE HERE, IN REVERSE ORDER OF ALLOCATION */
-  //unregister_chrdev_region(asgn2_device.dev, 1);
   goto fail_class;
 
   return result;
@@ -570,12 +580,12 @@ void __exit asgn2_exit_module(void){
    * cleanup in reverse order
    */
 
+  free_irq(7,&asgn2_device);
+  release_region(0x378,3);
   remove_proc_entry(MYDEV_NAME, NULL);
   free_memory_pages();
   cdev_del(asgn2_device.cdev);
   unregister_chrdev_region(asgn2_device.dev, 1);
-  release_region(0x378,3);
-  free_irq(7,&asgn2_device);
 
   printk(KERN_WARNING "Good bye from %s\n", MYDEV_NAME);
 }
