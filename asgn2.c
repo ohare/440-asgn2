@@ -538,12 +538,12 @@ int __init asgn2_init_module(void){
   return 0;
 
 fail_req_irq:
-  free_irq(7,&asgn2_device);
+  //free_irq(7,&asgn2_device);
+  release_region(0x378,3);
   goto fail_req_region;
     
 
 fail_req_region:
-  release_region(0x378,3);
   goto fail_class;
 
 
