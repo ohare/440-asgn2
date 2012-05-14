@@ -30,6 +30,7 @@
 #include <linux/device.h>
 #include <linux/ioport.h>
 #include <linux/interrupt.h>
+#include <linux/io.h>
 #include <asm/io.h>
 
 #define MYDEV_NAME "asgn2"
@@ -69,6 +70,7 @@ asgn2_dev asgn2_device;
 int asgn2_major = 0;                      /* major number of module */  
 int asgn2_minor = 0;                      /* minor number of module */
 int asgn2_dev_count = 1;                  /* number of devices */
+unsigned long parport = 0x378;            /* Parallel port */
 
 
 typedef struct circular_buffer{
@@ -428,7 +430,10 @@ struct file_operations asgn2_fops = {
 };
 
 irqreturn_t my_handler(int irq, void *dev_id){
-    printk(KERN_INFO "(ASGN2) IRQ %d", irq);
+    char c = inb(parport);
+    int a = 127;
+    c = c & a;
+    printk(KERN_INFO "(ASGN2) my handler %c", c);
     return IRQ_HANDLED;
 }
 
@@ -501,10 +506,12 @@ int __init asgn2_init_module(void){
     goto fail_class;
   }
 
+  if((err = check_region(parport,3)) < 0) return err;
+
   /* Get access to parallel port */
-  if(request_region(0x378,3,MYDEV_NAME)){
+  if(request_region(parport,3,MYDEV_NAME) == NULL){
     printk(KERN_WARNING "%s: request_region failed\n", MYDEV_NAME);
-    result = -EBUSY;
+    result = -1;
     goto fail_req_region;
   }
 
