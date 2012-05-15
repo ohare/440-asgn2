@@ -42,7 +42,6 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Calum O'Hare");
 MODULE_DESCRIPTION("COSC440 asgn2");
 
-
 /**
  * The node structure for the memory page linked list.
  */ 
@@ -72,7 +71,6 @@ int asgn2_minor = 0;                      /* minor number of module */
 int asgn2_dev_count = 1;                  /* number of devices */
 unsigned long parport = 0x378;            /* Parallel port */
 
-
 typedef struct circular_buffer{
     char content[BUFFER_SIZE];
     int head;
@@ -86,57 +84,35 @@ circ_buf cbuf;
  * I choose to overwrite the head
  * if the buffer was full
  */
-void write_circ_buf(char *data){
-    int i = 0;
+void write_circ_buf(char data){
 
-    while(data[i] != '\0'){
-        cbuf.content[cbuf.tail] = data[i];
-        i++;
-        cbuf.tail++;
-        if(cbuf.tail == BUFFER_SIZE){
-            cbuf.tail = 0;
+    cbuf.content[cbuf.tail] = data;
+    cbuf.tail++;
+    if(cbuf.tail == cbuf.head){
+        cbuf.head++;
+        if(cbuf.head == BUFFER_SIZE){
+            cbuf.head = 0;
         }
-        if(cbuf.tail == cbuf.head){
-            cbuf.head++;
-            if(cbuf.head == BUFFER_SIZE){
-                cbuf.head = 0;
-            }
-        }
+    }
+    if(cbuf.tail == BUFFER_SIZE){
+        cbuf.tail = 0;
     }
 }
 
 /*
  * Reads from the circular buffer
  */
- /* TODO where should this be reading to? */
-char* read_circ_buf(void){
-    char* read;
-    int size_to_read;
-    int i = 0;
+char read_circ_buf(void){
+    char read;
 
-    if(cbuf.head < cbuf.tail){
-        size_to_read = cbuf.tail - cbuf.head;
-    } else if(cbuf.head > cbuf.tail){
-        size_to_read = BUFFER_SIZE  - cbuf.head;
-        size_to_read += cbuf.tail;
-    } else {
-        return NULL;
+    if(cbuf.head == cbuf.tail){
+        return '\0';
     }
 
-    read = kmalloc(size_to_read * sizeof(char), GFP_KERNEL);
-    if(read == NULL){
-        printk(KERN_WARNING "Error allocating memory to read from circular buffer to");
-        return NULL;
-    }
-
-    while(size_to_read > 0){
-        read[i] = cbuf.content[cbuf.head];
-        i++;
-        cbuf.head++;
-        size_to_read--;
-        if(cbuf.head == BUFFER_SIZE){
-            cbuf.head = 0;
-        }
+    read = cbuf.content[cbuf.head];
+    cbuf.head++;
+    if(cbuf.head == BUFFER_SIZE){
+        cbuf.head = 0;
     }
 
     return read;
@@ -278,7 +254,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
                                 page_address(curr->page) + begin_offset, size_to_be_read);
-                printk(KERN_INFO "(Asgn1) Read %d from buffer", curr_size_read);
+                printk(KERN_INFO "(Asgn2) Read %d from buffer", curr_size_read);
                 if(curr_size_read > 0){
                     begin_offset += curr_size_read;
                     size_read += curr_size_read;
@@ -302,6 +278,68 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 
   return size_read;
 }
+
+/**
+ * This function writes from the user buffer to the virtual disk of this
+ * module
+ */
+ssize_t asgn2_write(char c) {
+  int curr_page_no = 0;     /* the current page number */
+				 while loop */
+  
+  struct list_head *ptr = asgn2_device.mem_list.next;
+  /* struct list_head *ptr = &asgn2_device.mem_list;*/
+  page_node *curr;
+
+        curr = list_entry(ptr, page_node, list);
+
+        if(ptr == &asgn2_device.mem_list){
+           curr = kmalloc(sizeof(page_node), GFP_KERNEL);
+            if(!curr){
+                printk(KERN_ERR "Kmalloc failed for new list head\n");
+               return -ENOMEM;
+           }
+           curr->page = alloc_page(GFP_KERNEL);
+           if(curr->page == NULL){
+                printk(KERN_WARNING "failed to alloc page");
+                return -ENOMEM;
+            }
+           INIT_LIST_HEAD(&curr->list);
+           list_add_tail(&curr->list,&(asgn2_device.mem_list));
+           ++asgn2_device.num_pages;
+           ptr = asgn2_device.mem_list.prev;
+           printk(KERN_INFO "(Asgn2) Successfully added new page node");
+        } else if(curr_page_no < begin_page_no){
+           ptr = ptr->next;
+           ++curr_page_no;
+        } else {
+            do{
+                size_to_be_written = min((int) count - (int) size_written,(int) PAGE_SIZE - (int) begin_offset);
+                curr_size_written = size_to_be_written - copy_from_user(
+                    page_address(curr->page) + begin_offset,
+                    &buf[size_written],size_to_be_written);
+                printk(KERN_INFO "(Asgn2) Wrote %d to buffer",
+                    curr_size_written);
+                if(curr_size_written > 0){
+                    begin_offset += curr_size_written;
+                    *f_pos += curr_size_written;
+                    size_written += curr_size_written;
+                    size_to_be_written -= curr_size_written;
+                } else {
+                    printk(KERN_WARNING "Error in copy from user");
+                }
+            } while (size_to_be_written > 0);
+            begin_offset = 0;
+            ptr = ptr->next;
+            curr_page_no++;
+        }
+   }
+
+  asgn2_device.data_size = max(asgn2_device.data_size,
+                               orig_f_pos + size_written);
+  return size_written;
+}
+
 
 #if 0
 /**
@@ -357,7 +395,7 @@ ssize_t asgn2_write(struct file *filp, const char __user *buf, size_t count,
            list_add_tail(&curr->list,&(asgn2_device.mem_list));
            ++asgn2_device.num_pages;
            ptr = asgn2_device.mem_list.prev;
-           printk(KERN_INFO "(Asgn1) Successfully added new page node");
+           printk(KERN_INFO "(Asgn2) Successfully added new page node");
         } else if(curr_page_no < begin_page_no){
            ptr = ptr->next;
            ++curr_page_no;
@@ -367,7 +405,7 @@ ssize_t asgn2_write(struct file *filp, const char __user *buf, size_t count,
                 curr_size_written = size_to_be_written - copy_from_user(
                     page_address(curr->page) + begin_offset,
                     &buf[size_written],size_to_be_written);
-                printk(KERN_INFO "(Asgn1) Wrote %d to buffer",
+                printk(KERN_INFO "(Asgn2) Wrote %d to buffer",
                     curr_size_written);
                 if(curr_size_written > 0){
                     begin_offset += curr_size_written;
@@ -405,7 +443,7 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
    * set eof
    */
 
-   result = snprintf(buf + offset,count,"Module Asgn1\n");
+   result = snprintf(buf + offset,count,"Module Asgn2\n");
    result += snprintf(buf + offset + result,count - result,
         "Number of pages in use:%d\n",asgn2_device.num_pages);
    result += snprintf(buf + offset + result,count - result,
@@ -422,20 +460,29 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
   return result;
 }
 
+void do_tasklet(unsigned long data){
+    printk(KERN_INFO "(ASGN2) Read:%c\n", read_circ_buf());
+}
+
+DECLARE_TASKLET(my_tasklet, do_tasklet, 0);
+
+/* Function to hanlde the interrupt */
+irqreturn_t my_handler(int irq, void *dev_id){
+    char c = inb(parport);
+    int a = 127;
+    c = c & a;
+    printk(KERN_INFO "(ASGN2) my handler %c", c);
+    write_circ_buf(c);
+    tasklet_schedule(&my_tasklet);
+    return IRQ_HANDLED;
+}
+
 struct file_operations asgn2_fops = {
   .owner = THIS_MODULE,
   .read = asgn2_read,
   .open = asgn2_open,
   .release = asgn2_release,
 };
-
-irqreturn_t my_handler(int irq, void *dev_id){
-    char c = inb(parport);
-    int a = 127;
-    c = c & a;
-    printk(KERN_INFO "(ASGN2) my handler %c", c);
-    return IRQ_HANDLED;
-}
 
 /**
  * Initialise the module and create the master device
@@ -458,7 +505,7 @@ int __init asgn2_init_module(void){
   int err = 0;
   void* pde;
 
-   printk(KERN_INFO "Initialising Asgn1");
+   printk(KERN_INFO "Initialising Asgn2");
   /* Set nprocs */
   atomic_set(&asgn2_device.nprocs, 0);
   /* Set max_nprocs */
@@ -468,14 +515,14 @@ int __init asgn2_init_module(void){
   asgn2_device.num_pages = 0;
 
   /* Dynamically allocate the device major number */
-  rv = alloc_chrdev_region(&asgn2_device.dev,0,1,"Assign1 Module");
+  rv = alloc_chrdev_region(&asgn2_device.dev,0,1,"Asgn2 Module");
   if(rv < 0){
     printk(KERN_WARNING "Device dynamic major number  allocation failed\n");
   }
   asgn2_major = MAJOR(asgn2_device.dev);
   asgn2_minor = MINOR(asgn2_device.dev);
 
-  printk(KERN_INFO "(Asgn1) Major Num:%d, Minor Number:%d",asgn2_major,asgn2_minor);
+  printk(KERN_INFO "(Asgn2) Major Num:%d, Minor Number:%d",asgn2_major,asgn2_minor);
   /* Allocate cdev */
   asgn2_device.cdev = cdev_alloc();
   if(asgn2_device.cdev == NULL){
