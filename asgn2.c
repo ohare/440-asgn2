@@ -285,59 +285,57 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
  */
 ssize_t asgn2_write(char c) {
   int curr_page_no = 0;     /* the current page number */
-				 while loop */
-  
+  int begin_offset = asgn2_device.data_size % PAGE_SIZE;
+  int curr_size_written = 0;
+  int begin_page_no = asgn2_device.data_size / PAGE_SIZE;
+  char ascii[2];
+
   struct list_head *ptr = asgn2_device.mem_list.next;
   /* struct list_head *ptr = &asgn2_device.mem_list;*/
   page_node *curr;
 
-        curr = list_entry(ptr, page_node, list);
+  ascii[0] = c;
+  ascii[1] = '\0';
+  
+  curr = list_entry(ptr, page_node, list);
 
-        if(ptr == &asgn2_device.mem_list){
-           curr = kmalloc(sizeof(page_node), GFP_KERNEL);
-            if(!curr){
-                printk(KERN_ERR "Kmalloc failed for new list head\n");
-               return -ENOMEM;
-           }
-           curr->page = alloc_page(GFP_KERNEL);
-           if(curr->page == NULL){
-                printk(KERN_WARNING "failed to alloc page");
-                return -ENOMEM;
-            }
-           INIT_LIST_HEAD(&curr->list);
-           list_add_tail(&curr->list,&(asgn2_device.mem_list));
-           ++asgn2_device.num_pages;
-           ptr = asgn2_device.mem_list.prev;
-           printk(KERN_INFO "(Asgn2) Successfully added new page node");
-        } else if(curr_page_no < begin_page_no){
-           ptr = ptr->next;
-           ++curr_page_no;
-        } else {
-            do{
-                size_to_be_written = min((int) count - (int) size_written,(int) PAGE_SIZE - (int) begin_offset);
-                curr_size_written = size_to_be_written - copy_from_user(
-                    page_address(curr->page) + begin_offset,
-                    &buf[size_written],size_to_be_written);
-                printk(KERN_INFO "(Asgn2) Wrote %d to buffer",
-                    curr_size_written);
-                if(curr_size_written > 0){
-                    begin_offset += curr_size_written;
-                    *f_pos += curr_size_written;
-                    size_written += curr_size_written;
-                    size_to_be_written -= curr_size_written;
-                } else {
-                    printk(KERN_WARNING "Error in copy from user");
-                }
-            } while (size_to_be_written > 0);
-            begin_offset = 0;
-            ptr = ptr->next;
-            curr_page_no++;
-        }
-   }
+  if(ptr == &asgn2_device.mem_list){
+      curr = kmalloc(sizeof(page_node), GFP_KERNEL);
+      if(!curr){
+          printk(KERN_ERR "Kmalloc failed for new list head\n");
+          return -ENOMEM;
+      }
+      curr->page = alloc_page(GFP_KERNEL);
+      if(curr->page == NULL){
+          printk(KERN_WARNING "failed to alloc page");
+          return -ENOMEM;
+      }
+      INIT_LIST_HEAD(&curr->list);
+      list_add_tail(&curr->list,&(asgn2_device.mem_list));
+      ++asgn2_device.num_pages;
+      ptr = asgn2_device.mem_list.prev;
+      printk(KERN_INFO "(Asgn2) Successfully added new page node");
+  } else if(curr_page_no < begin_page_no){
+      ptr = ptr->next;
+      ++curr_page_no;
+  } else {
+      do{
+          curr_size_written = copy_from_user(
+                  page_address(curr->page) + begin_offset,
+                  &ascii,1);
+          printk(KERN_INFO "(Asgn2) Wrote %d to buffer",
+                  curr_size_written);
+          if(curr_size_written <= 0){
+              printk(KERN_WARNING "Error in copy from user");
+          }
+      } while (curr_size_written <= 0);
+      ptr = ptr->next;
+      curr_page_no++;
+  }
 
-  asgn2_device.data_size = max(asgn2_device.data_size,
-                               orig_f_pos + size_written);
-  return size_written;
+asgn2_device.data_size++;
+
+return 1;
 }
 
 
