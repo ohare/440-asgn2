@@ -32,6 +32,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <asm/io.h>
+#include <linux/sched.h>
 
 #define MYDEV_NAME "asgn2"
 #define MYIOC_TYPE 'k'
@@ -64,6 +65,8 @@ typedef struct asgn2_dev_t {
 } asgn2_dev;
 
 asgn2_dev asgn2_device;
+
+DECLARE_WAIT_QUEUE_HEAD(my_queue); /* Declare a wait queue for waiting read processes */
 
 int *nulchars;
 int num_files = 0;
@@ -186,6 +189,12 @@ int asgn2_open(struct inode *inode, struct file *filp) {
    /* Set EOF to 0 */
    eof = 0;
 
+   if(read_count == num_files){
+       printk("(%s) No file to read. Sleeping...",MYDEV_NAME);
+       interruptible_sleep_on(&my_queue);
+       printk(KERN_INFO "(%s) Waking up!",MYDEV_NAME);
+   }
+
   return 0; /* success */
 }
 
@@ -294,7 +303,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         }
         curr_page_no++;
     }
-    printk(KERN_ERR "Read through all the pages");
+    printk(KERN_ERR "Read through all the pages\n");
 
     *f_pos += size_read + 1;
     read_count++;
@@ -321,6 +330,7 @@ ssize_t asgn2_write(char c) {
         printk("Error reallocating memory for array of nul chars");
         return -ENOMEM;
       }
+      wake_up_interruptible(&my_queue);
   }
   
   curr = list_entry(ptr, page_node, list);
