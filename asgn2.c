@@ -99,6 +99,7 @@ void write_circ_buf(char data){
     }
 }
 
+#if 0
 /*
  * Reads from the circular buffer
  */
@@ -113,6 +114,43 @@ char read_circ_buf(void){
     cbuf.head++;
     if(cbuf.head == BUFFER_SIZE){
         cbuf.head = 0;
+    }
+
+    return read;
+}
+#endif
+
+/*
+ * Reads from the circular buffer
+ */
+char* read_circ_buf(void){
+    char* read;
+    int size_to_read;
+    int i = 0;
+
+    if(cbuf.head < cbuf.tail){
+        size_to_read = cbuf.tail - cbuf.head;
+    } else if(cbuf.head > cbuf.tail){
+        size_to_read = BUFFER_SIZE  - cbuf.head;
+        size_to_read += cbuf.tail;
+    } else {
+        return NULL;
+    }
+
+    read = kmalloc(size_to_read * sizeof(char), GFP_KERNEL);
+    if(read == NULL){
+        printk(KERN_WARNING "Error allocating memory to read from circular buffer to");
+        return NULL;
+    }
+
+    while(size_to_read > 0){
+        read[i] = cbuf.content[cbuf.head];
+        i++;
+        cbuf.head++;
+        size_to_read--;
+        if(cbuf.head == BUFFER_SIZE){
+            cbuf.head = 0;
+        }
     }
 
     return read;
@@ -346,7 +384,7 @@ ssize_t asgn2_write(char c) {
   */
 
 
-return 1;
+return sizeof(char);
 }
 
 
