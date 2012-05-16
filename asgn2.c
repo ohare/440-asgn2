@@ -66,7 +66,7 @@ typedef struct asgn2_dev_t {
 asgn2_dev asgn2_device;
 
 int *nulchars;
-int num_files = 1;
+int num_files = 0;
 int read_count = 0;
 
 int asgn2_major = 0;                      /* major number of module */  
@@ -252,9 +252,11 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 size_to_be_read = min((int) count - (int) size_read, (int) PAGE_SIZE - (int) begin_offset);
                 printk(KERN_INFO "NULCHARS %d",read_count);
                 printk(KERN_INFO "NULCHARS[count] %d",nulchars[read_count]);
-                printk(KERN_INFO "FPOS %d",(int) *f_pos);
+                printk(KERN_INFO "OFF %d",begin_offset);
+                printk(KERN_INFO "SIZETBREAD %d", size_to_be_read);
+                printk(KERN_INFO "BREAD - CARS: %d", size_to_be_read - (nulchars[read_count] - begin_offset));
                 if(size_to_be_read > nulchars[read_count] - begin_offset){
-                    count = nulchars[read_count] - begin_offset;
+                    size_to_be_read = nulchars[read_count] - begin_offset;
                 }
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
@@ -298,9 +300,9 @@ ssize_t asgn2_write(char c) {
   printk(KERN_INFO "Write: %c",c);
 
   if(c == '\0'){
-      nulchars[num_files - 1] = asgn2_device.data_size;
-      printk(KERN_INFO "write nulchars %d",nulchars[num_files - 1]);
-      nulchars = krealloc(nulchars,(++num_files) * sizeof(int), GFP_KERNEL);
+      nulchars[num_files] = asgn2_device.data_size;
+      printk(KERN_INFO "write nulchars %d",nulchars[num_files]);
+      nulchars = krealloc(nulchars,(++num_files + 1) * sizeof(int), GFP_KERNEL);
       if(nulchars == NULL){
         printk("Error reallocating memory for array of nul chars");
         return -ENOMEM;
@@ -568,7 +570,8 @@ int __init asgn2_init_module(void){
   /* Enable the interrupt of the parallel port */
   outb_p(inb_p(0x378 + 2) | 0x10, 0x378 + 2);
 
-  nulchars = kmalloc(num_files * sizeof(int), GFP_KERNEL);
+  /* Initialise array of nul character pointers */
+  nulchars = kmalloc(sizeof(int), GFP_KERNEL);
   if(nulchars == NULL){
     printk("Error reallocating memory for array of nul chars");
     return -ENOMEM;
