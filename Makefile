@@ -1,5 +1,5 @@
 MODULE_NAME = asgn2
-EXTRA_CFLAGS += -Werror
+'EXTRA_CFLAGS += -Werror
 
 
 obj-m   := $(MODULE_NAME).o

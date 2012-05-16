@@ -99,7 +99,6 @@ void write_circ_buf(char data){
     }
 }
 
-#if 0
 /*
  * Reads from the circular buffer
  */
@@ -118,42 +117,13 @@ char read_circ_buf(void){
 
     return read;
 }
-#endif
 
-/*
- * Reads from the circular buffer
- */
-char* read_circ_buf(void){
-    char* read;
-    int size_to_read;
-    int i = 0;
-
-    if(cbuf.head < cbuf.tail){
-        size_to_read = cbuf.tail - cbuf.head;
-    } else if(cbuf.head > cbuf.tail){
-        size_to_read = BUFFER_SIZE  - cbuf.head;
-        size_to_read += cbuf.tail;
-    } else {
-        return NULL;
+int is_circ_empty(){
+    if(cbuf.head == cbuf.tail){
+        return 1;
     }
 
-    read = kmalloc(size_to_read * sizeof(char), GFP_KERNEL);
-    if(read == NULL){
-        printk(KERN_WARNING "Error allocating memory to read from circular buffer to");
-        return NULL;
-    }
-
-    while(size_to_read > 0){
-        read[i] = cbuf.content[cbuf.head];
-        i++;
-        cbuf.head++;
-        size_to_read--;
-        if(cbuf.head == BUFFER_SIZE){
-            cbuf.head = 0;
-        }
-    }
-
-    return read;
+    return 0;
 }
 
 /**
@@ -319,7 +289,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 
 /**
  * This function writes from the user buffer to the virtual disk of this
- * module
+ * module expects a char
  */
 ssize_t asgn2_write(char c) {
   int begin_offset = asgn2_device.data_size % PAGE_SIZE;
@@ -383,10 +353,8 @@ ssize_t asgn2_write(char c) {
   }
   */
 
-
 return sizeof(char);
 }
-
 
 #if 0
 /**
@@ -508,10 +476,17 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 }
 
 void do_tasklet(unsigned long data){
-    char c = read_circ_buf();
+    char* c = read_circ_buf();
+    int i = 0;
+    int count = 0;
 
-    printk(KERN_INFO "(ASGN2) Read:%c\n", c);
-    asgn2_write(c);
+    while(c[i] != '\0'){
+        count++;
+    }
+    printk(KERN_INFO "(ASGN2) Read:%s\n", c);
+    /*
+    asgn2_write(c,count);
+    */
 }
 
 DECLARE_TASKLET(my_tasklet, do_tasklet, 0);
@@ -520,7 +495,6 @@ DECLARE_TASKLET(my_tasklet, do_tasklet, 0);
 irqreturn_t my_handler(int irq, void *dev_id){
     char c = inb_p(parport);
     int a = 127;
-    mb();
     c = c & a;
     printk(KERN_INFO "(ASGN2) my handler %c", c);
     write_circ_buf(c);
