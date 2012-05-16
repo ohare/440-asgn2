@@ -68,6 +68,7 @@ asgn2_dev asgn2_device;
 int *nulchars;
 int num_files = 0;
 int read_count = 0;
+int eof = 0;
 
 int asgn2_major = 0;                      /* major number of module */  
 int asgn2_minor = 0;                      /* minor number of module */
@@ -168,13 +169,6 @@ void free_memory_pages(void) {
  * mode, all memory pages will be freed.
  */
 int asgn2_open(struct inode *inode, struct file *filp) {
-  /* COMPLETE ME */
-  /**
-   * Increment process count, if exceeds max_nprocs, return -EBUSY
-   *
-   * if opened in write-only mode, free all memory pages
-   *
-   */
    
    /* If the number of devices is already at maximum return -EBUSY */
    if (atomic_read(&asgn2_device.nprocs) == atomic_read(&asgn2_device.max_nprocs)){
@@ -188,6 +182,9 @@ int asgn2_open(struct inode *inode, struct file *filp) {
    if ((filp->f_flags & O_ACCMODE) == O_WRONLY){
      free_memory_pages();
    }
+
+   /* Set EOF to 0 */
+   eof = 0;
 
   return 0; /* success */
 }
@@ -244,6 +241,9 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     if(read_count == num_files){
         printk(KERN_INFO "(%s) Read all files",MYDEV_NAME);
         return 0;
+    } else if(eof == 1){
+        printk(KERN_INFO "(%s) Already read a file",MYDEV_NAME);
+        return 0;
     } else if(read_count > 0){
         begin_offset = ((nulchars[read_count - 1] + 1) % PAGE_SIZE);
         begin_page_no = ((nulchars[read_count - 1] + 1) / PAGE_SIZE);
@@ -263,7 +263,14 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 printk(KERN_INFO "BREAD - CARS: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
                 if(size_to_be_read > ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset)){
                     size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
+                    /*
+                    if(num_files > read_count + 1){
+                        printk(KERN_INFO "Num greater tehn read upchars:%d",(int)(nulchars[read_count + 1] % PAGE_SIZE));
+                        size_to_be_read = ((nulchars[read_count + 1] % PAGE_SIZE) - (nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
+                    }
+                    */
                 }
+                printk(KERN_INFO "suze to b bread: %d",size_to_be_read);
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
                                 page_address(curr->page) + begin_offset, size_to_be_read);
@@ -274,6 +281,8 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                     size_to_be_read -= curr_size_read;
                 } else {
                     printk(KERN_ERR "Error in copy to user");
+                    /* TODO comment this out */
+                    return -1;
                 }
                 /* Repeat loop if we read in less than what we were supposed to */
                 if(size_read >= count){
@@ -289,6 +298,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 
     *f_pos += size_read + 1;
     read_count++;
+    eof = 1;
 
     return size_read;
 }
@@ -472,7 +482,7 @@ irqreturn_t my_handler(int irq, void *dev_id){
     char c = inb_p(parport);
     int a = 127;
     c = c & a;
-    printk(KERN_INFO "(ASGN2) my handler %c", c);
+    /*printk(KERN_INFO "(ASGN2) my handler %c", c);*/
     write_circ_buf(c);
     tasklet_schedule(&my_tasklet);
     return IRQ_HANDLED;
