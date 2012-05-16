@@ -66,7 +66,8 @@ typedef struct asgn2_dev_t {
 asgn2_dev asgn2_device;
 
 int *nulchars;
-int nul_len = 1;
+int num_files = 1;
+int read_count = 0;
 
 int asgn2_major = 0;                      /* major number of module */  
 int asgn2_minor = 0;                      /* minor number of module */
@@ -237,12 +238,24 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     if(*f_pos + count > asgn2_device.data_size){
         count = asgn2_device.data_size - *f_pos;
     }
+
+    if(read_count == num_files){
+        printk(KERN_INFO "(%s) Read all files",MYDEV_NAME);
+        return 0;
+    }
+
     /* For each page in the list */
     list_for_each_entry(curr, ptr, list){
         printk(KERN_ERR "%d %d\n", begin_page_no, curr_page_no);
         if(curr_page_no >= begin_page_no){
             do {
                 size_to_be_read = min((int) count - (int) size_read, (int) PAGE_SIZE - (int) begin_offset);
+                printk(KERN_INFO "NULCHARS %d",read_count);
+                printk(KERN_INFO "NULCHARS[count] %d",nulchars[read_count]);
+                printk(KERN_INFO "FPOS %d",(int) *f_pos);
+                if(size_to_be_read > nulchars[read_count] - begin_offset){
+                    count = nulchars[read_count] - begin_offset;
+                }
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
                                 page_address(curr->page) + begin_offset, size_to_be_read);
@@ -266,9 +279,10 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     }
     printk(KERN_ERR "Read through all the pages");
 
-*f_pos += size_read;
+    *f_pos += size_read + 1;
+    read_count++;
 
-  return size_read;
+    return size_read;
 }
 
 /**
@@ -284,8 +298,9 @@ ssize_t asgn2_write(char c) {
   printk(KERN_INFO "Write: %c",c);
 
   if(c == '\0'){
-      nulchars[nul_len - 1] = asgn2_device.data_size;
-      nulchars = krealloc(nulchars,(++nul_len) * sizeof(int), GFP_KERNEL);
+      nulchars[num_files - 1] = asgn2_device.data_size;
+      printk(KERN_INFO "write nulchars %d",nulchars[num_files - 1]);
+      nulchars = krealloc(nulchars,(++num_files) * sizeof(int), GFP_KERNEL);
       if(nulchars == NULL){
         printk("Error reallocating memory for array of nul chars");
         return -ENOMEM;
@@ -553,7 +568,7 @@ int __init asgn2_init_module(void){
   /* Enable the interrupt of the parallel port */
   outb_p(inb_p(0x378 + 2) | 0x10, 0x378 + 2);
 
-  nulchars = kmalloc(nul_len * sizeof(int), GFP_KERNEL);
+  nulchars = kmalloc(num_files * sizeof(int), GFP_KERNEL);
   if(nulchars == NULL){
     printk("Error reallocating memory for array of nul chars");
     return -ENOMEM;
