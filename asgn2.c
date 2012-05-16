@@ -239,16 +239,20 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         count = asgn2_device.data_size - *f_pos;
     }
 
+    printk(KERN_INFO "Read count: %d",read_count);
+    printk(KERN_INFO "Num files: %d",num_files);
     if(read_count == num_files){
         printk(KERN_INFO "(%s) Read all files",MYDEV_NAME);
         return 0;
     } else if(read_count > 0){
         begin_offset = ((nulchars[read_count - 1] + 1) % PAGE_SIZE);
+        begin_page_no = ((nulchars[read_count - 1] + 1) / PAGE_SIZE);
+        printk(KERN_INFO "Not first read so off: %d", (int) begin_offset);
+        printk(KERN_INFO "Not first read so begin no: %d", (int) begin_page_no);
     }
 
     /* For each page in the list */
     list_for_each_entry(curr, ptr, list){
-        printk(KERN_ERR "%d %d\n", begin_page_no, curr_page_no);
         if(curr_page_no >= begin_page_no){
             do {
                 size_to_be_read = min((int) count - (int) size_read, (int) PAGE_SIZE - (int) begin_offset);
@@ -256,9 +260,9 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 printk(KERN_INFO "NULCHARS[count] %d",(int) (nulchars[read_count] % PAGE_SIZE));
                 printk(KERN_INFO "OFF %d",begin_offset);
                 printk(KERN_INFO "SIZETBREAD %d", size_to_be_read);
-                printk(KERN_INFO "BREAD - CARS: %d", size_to_be_read - (nulchars[read_count] - begin_offset));
-                if(size_to_be_read > ((nulchars[read_count] % PAGE_SIZE) - begin_offset)){
-                    size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - begin_offset);
+                printk(KERN_INFO "BREAD - CARS: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
+                if(size_to_be_read > ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset)){
+                    size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
                 }
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
@@ -298,8 +302,6 @@ ssize_t asgn2_write(char c) {
 
   struct list_head *ptr = asgn2_device.mem_list.prev;
   page_node *curr;
-
-  printk(KERN_INFO "Write: %c",c);
 
   if(c == '\0'){
       nulchars[num_files] = asgn2_device.data_size;
@@ -460,7 +462,6 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 void do_tasklet(unsigned long data){
     char c = read_circ_buf();
 
-    printk(KERN_INFO "(ASGN2) Read:%c\n", c);
     asgn2_write(c);
 }
 
