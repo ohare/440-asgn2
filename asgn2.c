@@ -218,7 +218,6 @@ int asgn2_release (struct inode *inode, struct file *filp) {
 
   atomic_dec(&asgn2_device.nprocs);
 
-  eof = 1;
   atomic_set(&asgn2_device.read_lock,0);
 
   return 0;
@@ -282,12 +281,10 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 printk(KERN_INFO "BREAD - CARS: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
                 if(size_to_be_read > ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset)){
                     size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
-                    /*
                     if(num_files > read_count + 1){
                         printk(KERN_INFO "Num greater tehn read upchars:%d",(int)(nulchars[read_count + 1] % PAGE_SIZE));
                         size_to_be_read = ((nulchars[read_count + 1] % PAGE_SIZE) - (nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
                     }
-                    */
                 }
                 printk(KERN_INFO "suze to b bread: %d",size_to_be_read);
                 /* Copy what we read to user space */
@@ -317,6 +314,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 
     *f_pos += size_read + 1;
     read_count++;
+    eof = 1;
 
     return size_read;
 }
