@@ -284,22 +284,17 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
  * module
  */
 ssize_t asgn2_write(char c) {
-  int curr_page_no = 0;     /* the current page number */
   int begin_offset = asgn2_device.data_size % PAGE_SIZE;
-  int curr_size_written = 0;
-  int begin_page_no = asgn2_device.data_size / PAGE_SIZE;
-  char ascii[2];
 
-  struct list_head *ptr = asgn2_device.mem_list.next;
+  struct list_head *ptr = asgn2_device.mem_list.prev;
   /* struct list_head *ptr = &asgn2_device.mem_list;*/
   page_node *curr;
 
-  ascii[0] = c;
-  ascii[1] = '\0';
+  printk(KERN_INFO "Write: %c",c);
   
   curr = list_entry(ptr, page_node, list);
 
-  if(ptr == &asgn2_device.mem_list){
+  if(begin_offset == 0){
       curr = kmalloc(sizeof(page_node), GFP_KERNEL);
       if(!curr){
           printk(KERN_ERR "Kmalloc failed for new list head\n");
@@ -315,25 +310,41 @@ ssize_t asgn2_write(char c) {
       ++asgn2_device.num_pages;
       ptr = asgn2_device.mem_list.prev;
       printk(KERN_INFO "(Asgn2) Successfully added new page node");
-  } else if(curr_page_no < begin_page_no){
-      ptr = ptr->next;
-      ++curr_page_no;
-  } else {
-      do{
-          curr_size_written = copy_from_user(
-                  page_address(curr->page) + begin_offset,
-                  &ascii,1);
-          printk(KERN_INFO "(Asgn2) Wrote %d to buffer",
-                  curr_size_written);
-          if(curr_size_written <= 0){
-              printk(KERN_WARNING "Error in copy from user");
-          }
-      } while (curr_size_written <= 0);
-      ptr = ptr->next;
-      curr_page_no++;
   }
 
-asgn2_device.data_size++;
+  memcpy(page_address(curr->page) + begin_offset,&c,1);
+
+  asgn2_device.data_size += sizeof(c);
+  /*
+     curr = list_entry(ptr, page_node, list);
+
+     if(ptr == &asgn2_device.mem_list){
+
+     curr = kmalloc(sizeof(page_node), GFP_KERNEL);
+     if(!curr){
+     printk(KERN_ERR "Kmalloc failed for new list head\n");
+     return -ENOMEM;
+     }
+     curr->page = alloc_page(GFP_KERNEL);
+     if(curr->page == NULL){
+     printk(KERN_WARNING "failed to alloc page");
+     return -ENOMEM;
+     }
+     INIT_LIST_HEAD(&curr->list);
+     list_add_tail(&curr->list,&(asgn2_device.mem_list));
+     ++asgn2_device.num_pages;
+     ptr = asgn2_device.mem_list.prev;
+     printk(KERN_INFO "(Asgn2) Successfully added new page node");
+     } else if(curr_page_no < begin_page_no){
+     ptr = ptr->next;
+     ++curr_page_no;
+     } else {
+     memcpy(page_address(curr->page) + begin_offset,&c,1);
+     ptr = ptr->next;
+      curr_page_no++;
+  }
+  */
+
 
 return 1;
 }
@@ -459,15 +470,19 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 }
 
 void do_tasklet(unsigned long data){
-    printk(KERN_INFO "(ASGN2) Read:%c\n", read_circ_buf());
+    char c = read_circ_buf();
+
+    printk(KERN_INFO "(ASGN2) Read:%c\n", c);
+    asgn2_write(c);
 }
 
 DECLARE_TASKLET(my_tasklet, do_tasklet, 0);
 
 /* Function to hanlde the interrupt */
 irqreturn_t my_handler(int irq, void *dev_id){
-    char c = inb(parport);
+    char c = inb_p(parport);
     int a = 127;
+    mb();
     c = c & a;
     printk(KERN_INFO "(ASGN2) my handler %c", c);
     write_circ_buf(c);
