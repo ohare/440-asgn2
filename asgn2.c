@@ -65,6 +65,8 @@ typedef struct asgn2_dev_t {
 
 asgn2_dev asgn2_device;
 
+int *nulchars;
+int nul_len = 1;
 
 int asgn2_major = 0;                      /* major number of module */  
 int asgn2_minor = 0;                      /* minor number of module */
@@ -225,24 +227,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 
   page_node *curr;
 
-  /* COMPLETE ME */
-  /**
-   * check f_pos, if beyond data_size, return 0
-   * 
-   * Traverse the list, once the first requested page is reached,
-   *   - use copy_to_user to copy the data to the user-space buf page by page
-   *   - you also need to work out the start / end offset within a page
-   *   - Also needs to handle the situation where copy_to_user copy less
-   *       data than requested, and
-   *       copy_to_user should be called again to copy the rest of the
-   *       unprocessed data, and the second and subsequent calls still
-   *       need to check whether copy_to_user copies all data requested.
-   *       This is best done by a while / do-while loop.
-   *
-   * if end of data area of ramdisk reached before copying the requested
-   *   return the size copied to the user space so far
-   */
-
    /* Check if f_pos is beyond data_size if so return 0 */
    if(*f_pos >= asgn2_device.data_size){
         return 0;
@@ -295,10 +279,18 @@ ssize_t asgn2_write(char c) {
   int begin_offset = asgn2_device.data_size % PAGE_SIZE;
 
   struct list_head *ptr = asgn2_device.mem_list.prev;
-  /* struct list_head *ptr = &asgn2_device.mem_list;*/
   page_node *curr;
 
   printk(KERN_INFO "Write: %c",c);
+
+  if(c == '\0'){
+      nulchars[nul_len - 1] = asgn2_device.data_size;
+      nulchars = krealloc(nulchars,(++nul_len) * sizeof(int), GFP_KERNEL);
+      if(nulchars == NULL){
+        printk("Error reallocating memory for array of nul chars");
+        return -ENOMEM;
+      }
+  }
   
   curr = list_entry(ptr, page_node, list);
 
@@ -323,35 +315,6 @@ ssize_t asgn2_write(char c) {
   memcpy(page_address(curr->page) + begin_offset,&c,1);
 
   asgn2_device.data_size += sizeof(c);
-  /*
-     curr = list_entry(ptr, page_node, list);
-
-     if(ptr == &asgn2_device.mem_list){
-
-     curr = kmalloc(sizeof(page_node), GFP_KERNEL);
-     if(!curr){
-     printk(KERN_ERR "Kmalloc failed for new list head\n");
-     return -ENOMEM;
-     }
-     curr->page = alloc_page(GFP_KERNEL);
-     if(curr->page == NULL){
-     printk(KERN_WARNING "failed to alloc page");
-     return -ENOMEM;
-     }
-     INIT_LIST_HEAD(&curr->list);
-     list_add_tail(&curr->list,&(asgn2_device.mem_list));
-     ++asgn2_device.num_pages;
-     ptr = asgn2_device.mem_list.prev;
-     printk(KERN_INFO "(Asgn2) Successfully added new page node");
-     } else if(curr_page_no < begin_page_no){
-     ptr = ptr->next;
-     ++curr_page_no;
-     } else {
-     memcpy(page_address(curr->page) + begin_offset,&c,1);
-     ptr = ptr->next;
-      curr_page_no++;
-  }
-  */
 
 return sizeof(char);
 }
@@ -589,6 +552,12 @@ int __init asgn2_init_module(void){
 
   /* Enable the interrupt of the parallel port */
   outb_p(inb_p(0x378 + 2) | 0x10, 0x378 + 2);
+
+  nulchars = kmalloc(nul_len * sizeof(int), GFP_KERNEL);
+  if(nulchars == NULL){
+    printk("Error reallocating memory for array of nul chars");
+    return -ENOMEM;
+  }
 
   asgn2_device.class = class_create(THIS_MODULE, MYDEV_NAME);
   if (IS_ERR(asgn2_device.class)) {
