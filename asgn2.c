@@ -118,7 +118,7 @@ char read_circ_buf(void){
     return read;
 }
 
-int is_circ_empty(){
+int is_circ_empty(void){
     if(cbuf.head == cbuf.tail){
         return 1;
     }
@@ -476,17 +476,10 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 }
 
 void do_tasklet(unsigned long data){
-    char* c = read_circ_buf();
-    int i = 0;
-    int count = 0;
+    char c = read_circ_buf();
 
-    while(c[i] != '\0'){
-        count++;
-    }
-    printk(KERN_INFO "(ASGN2) Read:%s\n", c);
-    /*
-    asgn2_write(c,count);
-    */
+    printk(KERN_INFO "(ASGN2) Read:%c\n", c);
+    asgn2_write(c);
 }
 
 DECLARE_TASKLET(my_tasklet, do_tasklet, 0);
