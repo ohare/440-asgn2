@@ -283,7 +283,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                     size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
                     if(num_files > read_count + 1){
                         printk(KERN_INFO "Num greater tehn read upchars:%d",(int)(nulchars[read_count + 1] % PAGE_SIZE));
-                        size_to_be_read = ((nulchars[read_count + 1] % PAGE_SIZE) - (nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
+                        size_to_be_read = ((nulchars[read_count + 1] % PAGE_SIZE) - (nulchars[read_count] % PAGE_SIZE));
                     }
                 }
                 printk(KERN_INFO "suze to b bread: %d",size_to_be_read);
