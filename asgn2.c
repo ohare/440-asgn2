@@ -59,6 +59,7 @@ typedef struct asgn2_dev_t {
   size_t data_size;     /* total data size in this module */
   atomic_t nprocs;      /* number of processes accessing this device */ 
   atomic_t max_nprocs;  /* max number of processes accessing this device */
+  atomic_t read_lock;   /* Whether the read function can be accessed */
   struct kmem_cache *cache;      /* cache memory */
   struct class *class;     /* the udev class */
   struct device *device;   /* the udev device node */
@@ -190,9 +191,10 @@ int asgn2_open(struct inode *inode, struct file *filp) {
    eof = 0;
 
    if(read_count == num_files){
-       printk("(%s) No file to read. Sleeping...",MYDEV_NAME);
-       interruptible_sleep_on(&my_queue);
-       printk(KERN_INFO "(%s) Waking up!",MYDEV_NAME);
+       printk(KERN_INFO "(%s) No file to read. Sleeping...\n",MYDEV_NAME);
+       wait_event_interruptible(my_queue, (read_count < num_files) && (atomic_read(&asgn2_device.read_lock) == 0));
+       atomic_set(&asgn2_device.read_lock,1);
+       printk(KERN_INFO "(%s) Waking up!\n",MYDEV_NAME);
    }
 
   return 0; /* success */
@@ -210,6 +212,9 @@ int asgn2_release (struct inode *inode, struct file *filp) {
    */
 
   atomic_dec(&asgn2_device.nprocs);
+
+  eof = 1;
+  atomic_set(&asgn2_device.read_lock,0);
 
   return 0;
 }
@@ -307,7 +312,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 
     *f_pos += size_read + 1;
     read_count++;
-    eof = 1;
 
     return size_read;
 }
@@ -330,6 +334,7 @@ ssize_t asgn2_write(char c) {
         printk("Error reallocating memory for array of nul chars");
         return -ENOMEM;
       }
+      printk(KERN_INFO "(%s) Waking up any waiting processes",MYDEV_NAME);
       wake_up_interruptible(&my_queue);
   }
   
@@ -530,7 +535,7 @@ int __init asgn2_init_module(void){
   /* Set nprocs */
   atomic_set(&asgn2_device.nprocs, 0);
   /* Set max_nprocs */
-  atomic_set(&asgn2_device.max_nprocs, 1);
+  atomic_set(&asgn2_device.max_nprocs, 10);
 
   asgn2_device.data_size = 0;
   asgn2_device.num_pages = 0;
