@@ -175,8 +175,12 @@ void free_memory_pages(void) {
 int asgn2_open(struct inode *inode, struct file *filp) {
    
    /* If the number of devices is already at maximum return -EBUSY */
-   if (atomic_read(&asgn2_device.nprocs) == atomic_read(&asgn2_device.max_nprocs)){
-     return -EBUSY;
+   if ((atomic_read(&asgn2_device.nprocs) == atomic_read(&asgn2_device.max_nprocs)) || (read_count == num_files)){
+       printk(KERN_INFO "(%s) No file to read. Sleeping...\n",MYDEV_NAME);
+       wait_event_interruptible(my_queue, (read_count < num_files) && (atomic_read(&asgn2_device.read_lock) == 0));
+       atomic_set(&asgn2_device.read_lock,1);
+       printk(KERN_INFO "(%s) Waking up!\n",MYDEV_NAME);
+     /*return -EBUSY;*/
    }
    
    /* Increment number of devices by 1 */
@@ -187,13 +191,14 @@ int asgn2_open(struct inode *inode, struct file *filp) {
      free_memory_pages();
    }
 
+/*
    if(read_count == num_files){
        printk(KERN_INFO "(%s) No file to read. Sleeping...\n",MYDEV_NAME);
        wait_event_interruptible(my_queue, (read_count < num_files) && (atomic_read(&asgn2_device.read_lock) == 0));
        atomic_set(&asgn2_device.read_lock,1);
        printk(KERN_INFO "(%s) Waking up!\n",MYDEV_NAME);
    }
-
+*/
    /* Set EOF to 0 */
    eof = 0;
 
@@ -535,7 +540,7 @@ int __init asgn2_init_module(void){
   /* Set nprocs */
   atomic_set(&asgn2_device.nprocs, 0);
   /* Set max_nprocs */
-  atomic_set(&asgn2_device.max_nprocs, 10);
+  atomic_set(&asgn2_device.max_nprocs, 1);
 
   asgn2_device.data_size = 0;
   asgn2_device.num_pages = 0;
