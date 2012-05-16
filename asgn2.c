@@ -187,15 +187,15 @@ int asgn2_open(struct inode *inode, struct file *filp) {
      free_memory_pages();
    }
 
-   /* Set EOF to 0 */
-   eof = 0;
-
    if(read_count == num_files){
        printk(KERN_INFO "(%s) No file to read. Sleeping...\n",MYDEV_NAME);
        wait_event_interruptible(my_queue, (read_count < num_files) && (atomic_read(&asgn2_device.read_lock) == 0));
        atomic_set(&asgn2_device.read_lock,1);
        printk(KERN_INFO "(%s) Waking up!\n",MYDEV_NAME);
    }
+
+   /* Set EOF to 0 */
+   eof = 0;
 
   return 0; /* success */
 }
