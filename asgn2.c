@@ -333,7 +333,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     }
     printk(KERN_ERR "(%s) Read through all the pages\n",MYDEV_NAME);
 
-    while(i < last_page_read - 1){
+    while(i < last_page_read){
         printk(KERN_INFO "(%s) Freeing page: %d",MYDEV_NAME,i);
         free_first_page();
         i++;
