@@ -266,6 +266,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
   size_t curr_size_read;    /* size read from the virtual disk in this round */
   size_t size_to_be_read;   /* size to be read in the current round in 
 			       while loop */
+  int last_page_read = 0;
 
   struct list_head *ptr = &asgn2_device.mem_list;
 
@@ -315,6 +316,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                     begin_offset += curr_size_read;
                     size_read += curr_size_read;
                     size_to_be_read -= curr_size_read;
+                    last_page_read = curr_page_no;
                 } else {
                     printk(KERN_ERR "Error in copy to user");
                     /* Will retry, uncomment below to stop infinite loop (potentially) */
@@ -331,7 +333,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     }
     printk(KERN_ERR "(%s) Read through all the pages\n",MYDEV_NAME);
 
-    while(i < curr_page_no - 1){
+    while(i < last_page_read - 1){
         printk(KERN_INFO "(%s) Freeing page: %d",MYDEV_NAME,i);
         free_first_page();
         i++;
