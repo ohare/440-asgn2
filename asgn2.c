@@ -265,7 +265,7 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     } else if(read_count > 0){
         begin_offset = ((nulchars[read_count - 1] + 1) % PAGE_SIZE);
         begin_page_no = ((nulchars[read_count - 1] + 1) / PAGE_SIZE);
-        printk(KERN_INFO "Not first read so off: %d", (int) begin_offset);
+        printk(KERN_INFO "Not first read so offset: %d", (int) begin_offset);
         printk(KERN_INFO "Not first read so begin no: %d", (int) begin_page_no);
     }
 
@@ -274,19 +274,27 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         if(curr_page_no >= begin_page_no){
             do {
                 size_to_be_read = min((int) count - (int) size_read, (int) PAGE_SIZE - (int) begin_offset);
-                printk(KERN_INFO "NULCHARS %d",read_count);
-                printk(KERN_INFO "NULCHARS[count] %d",(int) (nulchars[read_count] % PAGE_SIZE));
-                printk(KERN_INFO "OFF %d",begin_offset);
-                printk(KERN_INFO "SIZETBREAD %d", size_to_be_read);
-                printk(KERN_INFO "BREAD - CARS: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
+                printk(KERN_INFO "Next nul char: %d",(int) (nulchars[read_count] % PAGE_SIZE));
+                printk(KERN_INFO "offset: %d",begin_offset);
+                printk(KERN_INFO "size to be read: %d", size_to_be_read);
+                printk(KERN_INFO "size to be read - next nul - offset: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
+                /* NEW CODE */
+                if((nulchars[read_count] / PAGE_SIZE) == begin_page_no){
+                    if(size_to_be_read > (nulchars[read_count] % PAGE_SIZE)){
+                        size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
+                    }
+                }
+                /* OLD CODE */
+                /*
                 if(size_to_be_read > ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset)){
                     size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
                     if(num_files > read_count + 1){
-                        printk(KERN_INFO "Num greater tehn read upchars:%d",(int)(nulchars[read_count + 1] % PAGE_SIZE));
+                        printk(KERN_INFO "num files > read count + 1, next nul mod page size:%d",(int)(nulchars[read_count + 1] % PAGE_SIZE));
                         size_to_be_read = ((nulchars[read_count + 1] % PAGE_SIZE) - (nulchars[read_count] % PAGE_SIZE));
                     }
                 }
-                printk(KERN_INFO "suze to b bread: %d",size_to_be_read);
+                */
+                printk(KERN_INFO "(B4 copy) size to be read: %d",size_to_be_read);
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
                                 page_address(curr->page) + begin_offset, size_to_be_read);
