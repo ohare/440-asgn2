@@ -72,7 +72,7 @@ DECLARE_WAIT_QUEUE_HEAD(my_queue); /* Declare a wait queue for waiting read proc
 int *nulchars;
 int num_files = 0;
 int read_count = 0;
-int eof = 0;
+int fin = 0;
 
 int asgn2_major = 0;                      /* major number of module */  
 int asgn2_minor = 0;                      /* minor number of module */
@@ -95,6 +95,7 @@ circ_buf cbuf;
 void write_circ_buf(char data){
 
     cbuf.content[cbuf.tail] = data;
+    printk(KERN_INFO "cbuf pos: %d val: %c",cbuf.tail,data);
     cbuf.tail++;
     if(cbuf.tail == cbuf.head){
         cbuf.head++;
@@ -105,6 +106,8 @@ void write_circ_buf(char data){
     if(cbuf.tail == BUFFER_SIZE){
         cbuf.tail = 0;
     }
+    printk(KERN_INFO "after write cbuf tail: %d",cbuf.tail);
+    printk(KERN_INFO "after write cbuf head: %d",cbuf.head);
 }
 
 /*
@@ -127,10 +130,14 @@ char read_circ_buf(void){
 }
 
 int is_circ_empty(void){
+    printk(KERN_INFO "buf head: %d", (int) cbuf.head);
+    printk(KERN_INFO "buf tail: %d", (int) cbuf.tail);
     if(cbuf.head == cbuf.tail){
+        printk(KERN_INFO "returning 1");
         return 1;
     }
 
+    printk(KERN_INFO "returning 0");
     return 0;
 }
 
@@ -192,7 +199,7 @@ int asgn2_open(struct inode *inode, struct file *filp) {
    }
 
    /* Set EOF to 0 */
-   eof = 0;
+   fin = 0;
    printk(KERN_INFO "Set EOF to 0");
 
   return 0; /* success */
@@ -213,7 +220,7 @@ int asgn2_release (struct inode *inode, struct file *filp) {
 
   atomic_set(&asgn2_device.read_lock,0);
 
-  //eof = 0;
+  //fin = 0;
 
   printk(KERN_INFO "(%s) Waking up any waiting processes",MYDEV_NAME);
   wake_up_interruptible(&my_queue);
@@ -256,9 +263,14 @@ void free_first_page(void){
         shuffle_array(i);
         num_files--;
         read_count--;
+        i--;
     } else {
         nulchars[i] -= PAGE_SIZE;
     }
+  }
+
+  for(i = 0; i < num_files; i++){
+        printk(KERN_INFO "Nulchar array debug pos:%d val:%d",i,nulchars[i]);
   }
 }
 
@@ -299,12 +311,13 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     if(read_count == num_files){
         printk(KERN_INFO "(%s) Read all files",MYDEV_NAME);
         return 0;
-    } else if(eof == 1){
+    } else if(fin == 1){
         printk(KERN_INFO "(%s) Already read a file",MYDEV_NAME);
         return 0;
     } else if(read_count > 0){
         begin_offset = ((nulchars[read_count - 1] + 1) % PAGE_SIZE);
         begin_page_no = ((nulchars[read_count - 1] + 1) / PAGE_SIZE);
+        printk(KERN_INFO "Not first read so prev nul count: %d", nulchars[read_count - 1] + 1);
         printk(KERN_INFO "Not first read so offset: %d", (int) begin_offset);
         printk(KERN_INFO "Not first read so begin no: %d", (int) begin_page_no);
     }
@@ -356,11 +369,12 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     while(i < curr_page_no - 1){
         printk(KERN_INFO "Freeing page: %d",i);
         free_first_page();
+        i++;
     }
 
     *f_pos += size_read + 1;
     read_count++;
-    eof = 1;
+    fin = 1;
 
     return size_read;
 }
@@ -375,6 +389,7 @@ ssize_t asgn2_write(char c) {
   struct list_head *ptr = asgn2_device.mem_list.prev;
   page_node *curr;
 
+  printk(KERN_INFO "About to write: %c",c);
   if(c == '\0'){
       nulchars[num_files] = asgn2_device.data_size;
       printk(KERN_INFO "write nulchars %d",nulchars[num_files]);
@@ -440,6 +455,10 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
    result += snprintf(buf + offset + result,count - result,
         "Maximum number of processes allowed:%d\n",
         atomic_read(&asgn2_device.max_nprocs));
+   result += snprintf(buf + offset + result,count - result,
+        "Number of files read:%d\n", read_count);
+   result += snprintf(buf + offset + result,count - result,
+        "Number of files:%d\n", num_files);
 
    *eof = 1;
 
@@ -447,9 +466,12 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 }
 
 void do_tasklet(unsigned long data){
-    char c = read_circ_buf();
+    char c;
 
-    asgn2_write(c);
+    while(is_circ_empty() == 0){
+        c = read_circ_buf();
+        asgn2_write(c);
+    }
 }
 
 DECLARE_TASKLET(my_tasklet, do_tasklet, 0);
@@ -566,6 +588,10 @@ int __init asgn2_init_module(void){
     printk("Error reallocating memory for array of nul chars");
     return -ENOMEM;
   }
+
+  /* Initialise circular buffer */
+  cbuf.head = 0;
+  cbuf.tail = 0;
 
   asgn2_device.class = class_create(THIS_MODULE, MYDEV_NAME);
   if (IS_ERR(asgn2_device.class)) {
