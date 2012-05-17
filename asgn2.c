@@ -1,12 +1,12 @@
 /**
  * File: asgn2.c
- * Date: 15/05/2012
+ * Date: 17/05/2012
  * Author: Calum O'Hare
  * Version: 0.1
  *
- * This is a module which serves as a virtual ramdisk which disk size is
- * limited by the amount of memory available and serves as the requirement for
- * COSC440 assignment 1 in 2012.
+ * This is a module which serves as a driver for a dummy parallel port device
+ * which disk size is limited by the amount of memory available and serves as
+ * the requirement for COSC440 assignment 2 in 2012.
  *
  * Note: multiple devices and concurrent modules are not supported in this
  *       version.
@@ -89,13 +89,11 @@ circ_buf cbuf;
 
 /*
  * Writes to the circular buffer
- * I choose to overwrite the head
- * if the buffer was full
+ * If  the buffer is full the first character will be overwritten
  */
 void write_circ_buf(char data){
 
     cbuf.content[cbuf.tail] = data;
-    printk(KERN_INFO "cbuf pos: %d val: %c",cbuf.tail,data);
     cbuf.tail++;
     if(cbuf.tail == cbuf.head){
         cbuf.head++;
@@ -106,8 +104,6 @@ void write_circ_buf(char data){
     if(cbuf.tail == BUFFER_SIZE){
         cbuf.tail = 0;
     }
-    printk(KERN_INFO "after write cbuf tail: %d",cbuf.tail);
-    printk(KERN_INFO "after write cbuf head: %d",cbuf.head);
 }
 
 /*
@@ -129,15 +125,14 @@ char read_circ_buf(void){
     return read;
 }
 
+/*
+ * Return whether circular buffer is empty or not
+ */
 int is_circ_empty(void){
-    printk(KERN_INFO "buf head: %d", (int) cbuf.head);
-    printk(KERN_INFO "buf tail: %d", (int) cbuf.tail);
     if(cbuf.head == cbuf.tail){
-        printk(KERN_INFO "returning 1");
         return 1;
     }
 
-    printk(KERN_INFO "returning 0");
     return 0;
 }
 
@@ -146,18 +141,6 @@ int is_circ_empty(void){
  */
 void free_memory_pages(void) {
   page_node *curr;
-
-  /* COMPLETE ME */
-  /**
-   * Loop through the entire page list {
-   *   if (node has a page) {
-   *     free the page
-   *   }
-   *   remove the node from the page list
-   *   free the node
-   * }
-   * reset device data size, and num_pages
-   */  
 
    page_node *tmp;
 
@@ -181,10 +164,11 @@ void free_memory_pages(void) {
  */
 int asgn2_open(struct inode *inode, struct file *filp) {
    
-   /* If the number of devices is already at maximum return -EBUSY */
+   /* If the number of devices is already at maximum wait in queue for a turn */
    if ((atomic_read(&asgn2_device.nprocs) == atomic_read(&asgn2_device.max_nprocs)) || (read_count == num_files)){
        printk(KERN_INFO "(%s) No file to read. Sleeping...\n",MYDEV_NAME);
        wait_event_interruptible(my_queue, (read_count < num_files) && (atomic_read(&asgn2_device.read_lock) == 0));
+       /* Require read lock before continuing */
        atomic_set(&asgn2_device.read_lock,1);
        printk(KERN_INFO "(%s) Waking up!\n",MYDEV_NAME);
      /*return -EBUSY;*/
@@ -200,7 +184,6 @@ int asgn2_open(struct inode *inode, struct file *filp) {
 
    /* Set EOF to 0 */
    fin = 0;
-   printk(KERN_INFO "Set EOF to 0");
 
   return 0; /* success */
 }
@@ -211,10 +194,6 @@ int asgn2_open(struct inode *inode, struct file *filp) {
  * in this case. 
  */
 int asgn2_release (struct inode *inode, struct file *filp) {
-  /* COMPLETE ME */
-  /**
-   * decrement process count
-   */
 
   atomic_dec(&asgn2_device.nprocs);
 
@@ -229,7 +208,7 @@ int asgn2_release (struct inode *inode, struct file *filp) {
 }
 
 /*
- * Move the elements in the nul character array
+ * Shift the elements in the nul character array to the left by one
  */
 void shuffle_array(int from){
     int i = 0;
@@ -258,6 +237,8 @@ void free_first_page(void){
   asgn2_device.data_size -= PAGE_SIZE;
   asgn2_device.num_pages -= 1;
 
+  /* Remove nul chars of old files and shuffle the rest down
+  minus one page size as required */
   for(i = 0;i < num_files;i++){
     if(nulchars[i] < PAGE_SIZE){
         shuffle_array(i);
@@ -269,9 +250,6 @@ void free_first_page(void){
     }
   }
 
-  for(i = 0; i < num_files; i++){
-        printk(KERN_INFO "Nulchar array debug pos:%d val:%d",i,nulchars[i]);
-  }
 }
 
 /**
@@ -306,8 +284,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         count = asgn2_device.data_size - *f_pos;
     }
 
-    printk(KERN_INFO "Read count: %d",read_count);
-    printk(KERN_INFO "Num files: %d",num_files);
     if(read_count == num_files){
         printk(KERN_INFO "(%s) Read all files",MYDEV_NAME);
         return 0;
@@ -317,9 +293,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
     } else if(read_count > 0){
         begin_offset = ((nulchars[read_count - 1] + 1) % PAGE_SIZE);
         begin_page_no = ((nulchars[read_count - 1] + 1) / PAGE_SIZE);
-        printk(KERN_INFO "Not first read so prev nul count: %d", nulchars[read_count - 1] + 1);
-        printk(KERN_INFO "Not first read so offset: %d", (int) begin_offset);
-        printk(KERN_INFO "Not first read so begin no: %d", (int) begin_page_no);
     }
 
     /* For each page in the list */
@@ -327,12 +300,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         if(curr_page_no >= begin_page_no){
             do {
                 size_to_be_read = min((int) count - (int) size_read, (int) PAGE_SIZE - (int) begin_offset);
-                printk(KERN_INFO "Next nul char: %d",(int) (nulchars[read_count] % PAGE_SIZE));
-                printk(KERN_INFO "offset: %d",begin_offset);
-                printk(KERN_INFO "size to be read: %d", size_to_be_read);
-                //printk(KERN_INFO "size to be read - next nul - offset: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
-                printk(KERN_INFO "Is nul char on this page? curr page:%d nul page:%d",curr_page_no,(int)(nulchars[read_count] / PAGE_SIZE));
-                printk(KERN_INFO "Nul char relative to page start:%d",(int)(nulchars[read_count] % PAGE_SIZE));
                 if((nulchars[read_count] / PAGE_SIZE) == curr_page_no){
                     if(size_to_be_read > (nulchars[read_count] % PAGE_SIZE) - (int) begin_offset){
                         size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
@@ -340,23 +307,21 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 } else if((nulchars[read_count] / PAGE_SIZE) < curr_page_no){
                     break;
                 }
-                printk(KERN_INFO "(B4 copy) size to be read: %d",size_to_be_read);
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
                                 page_address(curr->page) + begin_offset, size_to_be_read);
-                printk(KERN_INFO "(Asgn2) Read %d from buffer", curr_size_read);
+                printk(KERN_INFO "(%s) Read %d from buffer",MYDEV_NAME, curr_size_read);
                 if(curr_size_read > 0){
                     begin_offset += curr_size_read;
                     size_read += curr_size_read;
                     size_to_be_read -= curr_size_read;
                 } else {
                     printk(KERN_ERR "Error in copy to user");
-                    /* TODO comment this out */
-                    return -1;
+                    /* Will retry, uncomment below to stop infinite loop (potentially) */
+                    /* return -1;*/
                 }
                 /* Repeat loop if we read in less than what we were supposed to */
                 if(size_read >= count){
-                    printk(KERN_ERR "read is more than or equal to count");
                     break;
                 }
             } while(curr_size_read < size_to_be_read);
@@ -364,10 +329,10 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         }
         curr_page_no++;
     }
-    printk(KERN_ERR "Read through all the pages\n");
+    printk(KERN_ERR "(%s) Read through all the pages\n",MYDEV_NAME);
 
     while(i < curr_page_no - 1){
-        printk(KERN_INFO "Freeing page: %d",i);
+        printk(KERN_INFO "(%s) Freeing page: %d",MYDEV_NAME,i);
         free_first_page();
         i++;
     }
@@ -380,8 +345,8 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
 }
 
 /**
- * This function writes from the user buffer to the virtual disk of this
- * module expects a char
+ * This function takes a char as input and writes it to the
+ * multi-page queue
  */
 ssize_t asgn2_write(char c) {
   int begin_offset = asgn2_device.data_size % PAGE_SIZE;
@@ -389,13 +354,11 @@ ssize_t asgn2_write(char c) {
   struct list_head *ptr = asgn2_device.mem_list.prev;
   page_node *curr;
 
-  printk(KERN_INFO "About to write: %c",c);
   if(c == '\0'){
       nulchars[num_files] = asgn2_device.data_size;
-      printk(KERN_INFO "write nulchars %d",nulchars[num_files]);
       nulchars = krealloc(nulchars,(++num_files + 1) * sizeof(int), GFP_KERNEL);
       if(nulchars == NULL){
-        printk("Error reallocating memory for array of nul chars");
+        printk("(%s) Error reallocating memory for array of nul chars",MYDEV_NAME);
         return -ENOMEM;
       }
       printk(KERN_INFO "(%s) Waking up any waiting processes",MYDEV_NAME);
@@ -419,7 +382,7 @@ ssize_t asgn2_write(char c) {
       list_add_tail(&curr->list,&(asgn2_device.mem_list));
       ++asgn2_device.num_pages;
       ptr = asgn2_device.mem_list.prev;
-      printk(KERN_INFO "(Asgn2) Successfully added new page node");
+      printk(KERN_INFO "(%s) Successfully added new page node",MYDEV_NAME);
   }
 
   memcpy(page_address(curr->page) + begin_offset,&c,1);
@@ -437,12 +400,6 @@ int asgn2_read_procmem(char *buf, char **start, off_t offset, int count,
 		     int *eof, void *data) {
   /* stub */
   int result;
-
-  /* COMPLETE ME */
-  /**
-   * use snprintf to print some info to buf, up to size count
-   * set eof
-   */
 
    result = snprintf(buf + offset,count,"Module Asgn2\n");
    result += snprintf(buf + offset + result,count - result,
@@ -481,7 +438,6 @@ irqreturn_t my_handler(int irq, void *dev_id){
     char c = inb_p(parport);
     int a = 127;
     c = c & a;
-    /*printk(KERN_INFO "(ASGN2) my handler %c", c);*/
     write_circ_buf(c);
     tasklet_schedule(&my_tasklet);
     return IRQ_HANDLED;
@@ -499,18 +455,6 @@ struct file_operations asgn2_fops = {
  */
 int __init asgn2_init_module(void){
   int result; 
-
-  /* COMPLETE ME */
-  /**
-   * set nprocs and max_nprocs of the device
-   *
-   * allocate major number
-   * allocate cdev, and set ops and owner field 
-   * add cdev
-   * initialize the page list
-   * create proc entries
-   */
-
   int rv;
   int err = 0;
   void* pde;
@@ -613,7 +557,7 @@ int __init asgn2_init_module(void){
   return 0;
 
 fail_req_irq:
-  //free_irq(7,&asgn2_device);
+  /*free_irq(7,&asgn2_device);*/
   release_region(0x378,3);
   goto fail_req_region;
     
