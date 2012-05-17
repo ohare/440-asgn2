@@ -221,6 +221,11 @@ int asgn2_release (struct inode *inode, struct file *filp) {
 
   atomic_set(&asgn2_device.read_lock,0);
 
+  //eof = 0;
+
+  printk(KERN_INFO "(%s) Waking up any waiting processes",MYDEV_NAME);
+  wake_up_interruptible(&my_queue);
+
   return 0;
 }
 
