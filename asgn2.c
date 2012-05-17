@@ -201,6 +201,7 @@ int asgn2_open(struct inode *inode, struct file *filp) {
 */
    /* Set EOF to 0 */
    eof = 0;
+   printk(KERN_INFO "Set EOF to 0");
 
   return 0; /* success */
 }
@@ -277,12 +278,16 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 printk(KERN_INFO "Next nul char: %d",(int) (nulchars[read_count] % PAGE_SIZE));
                 printk(KERN_INFO "offset: %d",begin_offset);
                 printk(KERN_INFO "size to be read: %d", size_to_be_read);
-                printk(KERN_INFO "size to be read - next nul - offset: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
+                //printk(KERN_INFO "size to be read - next nul - offset: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
+                printk(KERN_INFO "Is nul char on this page? curr page:%d nul page:%d",curr_page_no,(int)(nulchars[read_count] / PAGE_SIZE));
+                printk(KERN_INFO "Nul char relative to page start:%d",(int)(nulchars[read_count] % PAGE_SIZE));
                 /* NEW CODE */
-                if((nulchars[read_count] / PAGE_SIZE) == begin_page_no){
-                    if(size_to_be_read > (nulchars[read_count] % PAGE_SIZE)){
+                if((nulchars[read_count] / PAGE_SIZE) == curr_page_no){
+                    if(size_to_be_read > (nulchars[read_count] % PAGE_SIZE) - (int) begin_offset){
                         size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
                     }
+                } else if((nulchars[read_count] / PAGE_SIZE) < curr_page_no){
+                    break;
                 }
                 /* OLD CODE */
                 /*
