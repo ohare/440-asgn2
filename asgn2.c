@@ -191,14 +191,6 @@ int asgn2_open(struct inode *inode, struct file *filp) {
      free_memory_pages();
    }
 
-/*
-   if(read_count == num_files){
-       printk(KERN_INFO "(%s) No file to read. Sleeping...\n",MYDEV_NAME);
-       wait_event_interruptible(my_queue, (read_count < num_files) && (atomic_read(&asgn2_device.read_lock) == 0));
-       atomic_set(&asgn2_device.read_lock,1);
-       printk(KERN_INFO "(%s) Waking up!\n",MYDEV_NAME);
-   }
-*/
    /* Set EOF to 0 */
    eof = 0;
    printk(KERN_INFO "Set EOF to 0");
@@ -229,6 +221,46 @@ int asgn2_release (struct inode *inode, struct file *filp) {
   return 0;
 }
 
+/*
+ * Move the elements in the nul character array
+ */
+void shuffle_array(int from){
+    int i = 0;
+
+    for(i = from; i < num_files - 1;i++){
+        nulchars[i] = nulchars[i+1];
+    }
+ }
+
+/**
+ * Free a page that has been completely read
+ */
+void free_first_page(void){
+  int i = 0;
+  struct list_head *ptr = asgn2_device.mem_list.next;
+  page_node *curr;
+
+  curr = list_entry(ptr, page_node, list);
+
+  if (curr->page != NULL){
+      __free_page(curr->page);
+  }
+  list_del(&(curr->list));
+  kfree(curr);
+
+  asgn2_device.data_size -= PAGE_SIZE;
+  asgn2_device.num_pages -= 1;
+
+  for(i = 0;i < num_files;i++){
+    if(nulchars[i] < PAGE_SIZE){
+        shuffle_array(i);
+        num_files--;
+        read_count--;
+    } else {
+        nulchars[i] -= PAGE_SIZE;
+    }
+  }
+}
 
 /**
  * This function reads contents of the virtual disk and writes to the user 
@@ -248,6 +280,8 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
   struct list_head *ptr = &asgn2_device.mem_list;
 
   page_node *curr;
+
+  int i = 0;
 
    /* Check if f_pos is beyond data_size if so return 0 */
    if(*f_pos >= asgn2_device.data_size){
@@ -286,7 +320,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 //printk(KERN_INFO "size to be read - next nul - offset: %d", size_to_be_read - ((int)(nulchars[read_count] % PAGE_SIZE) - (int) begin_offset));
                 printk(KERN_INFO "Is nul char on this page? curr page:%d nul page:%d",curr_page_no,(int)(nulchars[read_count] / PAGE_SIZE));
                 printk(KERN_INFO "Nul char relative to page start:%d",(int)(nulchars[read_count] % PAGE_SIZE));
-                /* NEW CODE */
                 if((nulchars[read_count] / PAGE_SIZE) == curr_page_no){
                     if(size_to_be_read > (nulchars[read_count] % PAGE_SIZE) - (int) begin_offset){
                         size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
@@ -294,16 +327,6 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
                 } else if((nulchars[read_count] / PAGE_SIZE) < curr_page_no){
                     break;
                 }
-                /* OLD CODE */
-                /*
-                if(size_to_be_read > ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset)){
-                    size_to_be_read = ((nulchars[read_count] % PAGE_SIZE) - (int) begin_offset);
-                    if(num_files > read_count + 1){
-                        printk(KERN_INFO "num files > read count + 1, next nul mod page size:%d",(int)(nulchars[read_count + 1] % PAGE_SIZE));
-                        size_to_be_read = ((nulchars[read_count + 1] % PAGE_SIZE) - (nulchars[read_count] % PAGE_SIZE));
-                    }
-                }
-                */
                 printk(KERN_INFO "(B4 copy) size to be read: %d",size_to_be_read);
                 /* Copy what we read to user space */
                 curr_size_read = size_to_be_read - copy_to_user(buf + size_read,
@@ -329,6 +352,11 @@ ssize_t asgn2_read(struct file *filp, char __user *buf, size_t count,
         curr_page_no++;
     }
     printk(KERN_ERR "Read through all the pages\n");
+
+    while(i < curr_page_no - 1){
+        printk(KERN_INFO "Freeing page: %d",i);
+        free_first_page();
+    }
 
     *f_pos += size_read + 1;
     read_count++;
@@ -385,93 +413,6 @@ ssize_t asgn2_write(char c) {
 
 return sizeof(char);
 }
-
-#if 0
-/**
- * This function writes from the user buffer to the virtual disk of this
- * module
- */
-ssize_t asgn2_write(struct file *filp, const char __user *buf, size_t count,
-		  loff_t *f_pos) {
-  size_t orig_f_pos = *f_pos;  /* the original file position */
-  size_t size_written = 0;  /* size written to virtual disk in this function */
-  size_t begin_offset;      /* the offset from the beginning of a page to
-			       start writing */
-  int begin_page_no = *f_pos / PAGE_SIZE;  /* the first page this finction
-					      should start writing to */
-
-  int curr_page_no = 0;     /* the current page number */
-  size_t curr_size_written; /* size written to virtual disk in this round */
-  size_t size_to_be_written;  /* size to be read in the current round in 
-				 while loop */
-  
-  struct list_head *ptr = asgn2_device.mem_list.next;
-  /* struct list_head *ptr = &asgn2_device.mem_list;*/
-  page_node *curr;
-
-  /* COMPLETE ME */
-  /**
-   * Traverse the list until the first page reached, and add nodes if necessary
-   *
-   * Then write the data page by page, remember to handle the situation
-   *   when copy_from_user() writes less than the amount you requested.
-   *   a while loop / do-while loop is recommended to handle this situation. 
-   */
-
-   /* Set the initial offset */
-   begin_offset = *f_pos % PAGE_SIZE;
-
-   /* For each page in the list */
-    while(size_written < count){
-        curr = list_entry(ptr, page_node, list);
-
-        if(ptr == &asgn2_device.mem_list){
-           curr = kmalloc(sizeof(page_node), GFP_KERNEL);
-            if(!curr){
-                printk(KERN_ERR "Kmalloc failed for new list head\n");
-               return -ENOMEM;
-           }
-           curr->page = alloc_page(GFP_KERNEL);
-           if(curr->page == NULL){
-                printk(KERN_WARNING "failed to alloc page");
-                return -ENOMEM;
-            }
-           INIT_LIST_HEAD(&curr->list);
-           list_add_tail(&curr->list,&(asgn2_device.mem_list));
-           ++asgn2_device.num_pages;
-           ptr = asgn2_device.mem_list.prev;
-           printk(KERN_INFO "(Asgn2) Successfully added new page node");
-        } else if(curr_page_no < begin_page_no){
-           ptr = ptr->next;
-           ++curr_page_no;
-        } else {
-            do{
-                size_to_be_written = min((int) count - (int) size_written,(int) PAGE_SIZE - (int) begin_offset);
-                curr_size_written = size_to_be_written - copy_from_user(
-                    page_address(curr->page) + begin_offset,
-                    &buf[size_written],size_to_be_written);
-                printk(KERN_INFO "(Asgn2) Wrote %d to buffer",
-                    curr_size_written);
-                if(curr_size_written > 0){
-                    begin_offset += curr_size_written;
-                    *f_pos += curr_size_written;
-                    size_written += curr_size_written;
-                    size_to_be_written -= curr_size_written;
-                } else {
-                    printk(KERN_WARNING "Error in copy from user");
-                }
-            } while (size_to_be_written > 0);
-            begin_offset = 0;
-            ptr = ptr->next;
-            curr_page_no++;
-        }
-   }
-
-  asgn2_device.data_size = max(asgn2_device.data_size,
-                               orig_f_pos + size_written);
-  return size_written;
-}
-#endif /* 0 */
 
 /**
  * Displays information about current status of the module,
