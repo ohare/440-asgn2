@@ -177,13 +177,16 @@ int asgn2_open(struct inode *inode, struct file *filp) {
    /* Increment number of devices by 1 */
    atomic_inc(&asgn2_device.nprocs);
 
-   /* If opened in write only mode call free all pages function */
-   if ((filp->f_flags & O_ACCMODE) == O_WRONLY){
-     free_memory_pages();
-   }
-
    /* Set EOF to 0 */
    fin = 0;
+
+   if ((filp->f_flags & O_ACCMODE) != O_RDONLY){
+     return -EACCES;
+   }
+   /* If opened in write only mode call free all pages function */
+   /*if ((filp->f_flags & O_ACCMODE) == O_WRONLY){
+     free_memory_pages();
+   }*/
 
   return 0; /* success */
 }
